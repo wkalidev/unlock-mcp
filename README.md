@@ -1,5 +1,7 @@
 # unlock-mcp
 
+[![npm](https://img.shields.io/npm/v/unlock-mcp)](https://www.npmjs.com/package/unlock-mcp)
+
 Read-only MCP server exposing [Unlock Protocol](https://unlock-protocol.com/) on-chain
 state. No private keys, no signing, no write calls — every tool only reads from the
 chain.
@@ -27,7 +29,9 @@ Add to your `claude_desktop_config.json`:
 claude mcp add unlock -- npx -y unlock-mcp
 ```
 
-Until this package is published to npm, point either of the above at a local checkout
+### Local development
+
+If you're working on the server itself, point either of the above at a local checkout
 instead:
 
 ```json
