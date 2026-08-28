@@ -1,0 +1,31 @@
+{
+  "name": "unlock-mcp",
+  "version": "0.1.0",
+  "description": "Read-only MCP server exposing Unlock Protocol on-chain state",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "unlock-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.js"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test dist/tools/checkMembership.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "viem": "^2.56.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^20.0.0"
+  }
+}
