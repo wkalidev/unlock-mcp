@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="96" alt="unlock-mcp logo">
+</p>
+
 # unlock-mcp
 
 [![npm](https://img.shields.io/npm/v/unlock-mcp)](https://www.npmjs.com/package/unlock-mcp)
