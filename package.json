@@ -2,22 +2,46 @@
   "name": "unlock-mcp",
   "version": "0.1.0",
   "description": "Read-only MCP server exposing Unlock Protocol on-chain state",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "unlock-protocol",
+    "web3",
+    "ethereum",
+    "base",
+    "nft",
+    "membership",
+    "blockchain"
+  ],
   "license": "MIT",
+  "author": "wkalidev",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "unlock-mcp": "dist/index.js"
   },
   "files": [
     "dist",
-    "!dist/**/*.test.js"
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts"
   ],
   "engines": {
     "node": ">=20"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wkalidev/unlock-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wkalidev/unlock-mcp/issues"
+  },
+  "homepage": "https://github.com/wkalidev/unlock-mcp#readme",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "npm run build && node --test dist/tools/checkMembership.test.js"
+    "test": "npm run build && node --test dist/tools/checkMembership.test.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
