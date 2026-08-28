@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/logo.svg" width="96" alt="unlock-mcp logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" width="96" alt="unlock-mcp">
+  </picture>
 </p>
 
 # unlock-mcp
