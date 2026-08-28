@@ -9,7 +9,7 @@ import {
 } from "viem";
 import { z } from "zod";
 import { publicLockAbi } from "../abi/publicLock.js";
-import { getNetwork, toViemChain } from "../networks.js";
+import { getNetwork, toViemChain, type NetworkConfig } from "../networks.js";
 
 const addressSchema = z
   .string()
@@ -86,10 +86,10 @@ export async function resolveBestKey(
   client: Pick<PublicClient, "readContract">,
   lockAddress: `0x${string}`,
   walletAddress: `0x${string}`,
-  balance: bigint,
+  keyCount: bigint,
   version: number
 ): Promise<{ tokenId: bigint; expiration: bigint }> {
-  const indices = Array.from({ length: Number(balance) }, (_, i) => BigInt(i));
+  const indices = Array.from({ length: Number(keyCount) }, (_, i) => BigInt(i));
 
   const tokenIds = await Promise.all(
     indices.map((index) =>
@@ -182,28 +182,50 @@ export async function checkMembership(rawInput: CheckMembershipInput): Promise<M
     throw new MembershipCheckError(`Unexpected error reading lock data: ${(err as Error).message}`);
   }
 
-  let balance: bigint;
+  return resolveMembershipStatus(client, input.lockAddress, input.walletAddress, version, lockName, network);
+}
+
+// Split out from checkMembership so it can be exercised against a mocked client:
+// checkMembership itself owns network/RPC setup and the not_a_contract / not_a_lock
+// checks, none of which this needs.
+export async function resolveMembershipStatus(
+  client: Pick<PublicClient, "readContract">,
+  lockAddress: `0x${string}`,
+  walletAddress: `0x${string}`,
+  version: number,
+  lockName: string,
+  network: NetworkConfig
+): Promise<MembershipResult> {
+  const rpcFailureMessage = () =>
+    `RPC request to ${network.name} failed on every configured endpoint (${network.rpcUrls.join(", ")}) — the network may be unreachable, timing out, or rate-limiting. Try again shortly.`;
+
+  // totalKeys, not balanceOf: on v10+ locks balanceOf counts only currently-valid keys,
+  // so a wallet holding an expired key reads identically to one that never held a key.
+  // Reach for totalKeys here even though balanceOf is the reflexive ERC-721 choice —
+  // it counts every key ever minted to the owner, and tokenOfOwnerByIndex is bounded
+  // by totalKeys rather than balanceOf, so it still enumerates expired keys.
+  let keyCount: bigint;
   try {
-    balance = await client.readContract({
-      address: input.lockAddress,
+    keyCount = await client.readContract({
+      address: lockAddress,
       abi: publicLockAbi,
-      functionName: "balanceOf",
-      args: [input.walletAddress],
+      functionName: "totalKeys",
+      args: [walletAddress],
     });
   } catch (err) {
     if (classifyError(err) === "transport") {
       throw new MembershipCheckError(rpcFailureMessage());
     }
-    throw new MembershipCheckError(`Unexpected error reading key balance: ${(err as Error).message}`);
+    throw new MembershipCheckError(`Unexpected error reading key count: ${(err as Error).message}`);
   }
 
-  if (balance === 0n) {
+  if (keyCount === 0n) {
     return { status: "no_key", lockName, network: network.name };
   }
 
   let best: { tokenId: bigint; expiration: bigint };
   try {
-    best = await resolveBestKey(client, input.lockAddress, input.walletAddress, balance, version);
+    best = await resolveBestKey(client, lockAddress, walletAddress, keyCount, version);
   } catch (err) {
     if (classifyError(err) === "transport") {
       throw new MembershipCheckError(rpcFailureMessage());

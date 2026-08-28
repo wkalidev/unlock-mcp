@@ -4,6 +4,12 @@
 // explicitly in src/tools/checkMembership.ts — keyExpirationTimestampFor took a
 // key owner address up through V9, and a tokenId from V10 onward. Both overloads
 // are declared below.
+//
+// totalKeys(address), not balanceOf(address), is used to size key enumeration: on
+// v10+ locks balanceOf counts only currently-valid keys, making an expired key
+// indistinguishable from no key at all. totalKeys counts every key ever minted to
+// the owner, and tokenOfOwnerByIndex is bounded by totalKeys rather than balanceOf,
+// so it still enumerates expired keys.
 export const publicLockAbi = [
   {
     type: "function",
@@ -21,10 +27,10 @@ export const publicLockAbi = [
   },
   {
     type: "function",
-    name: "balanceOf",
+    name: "totalKeys",
     stateMutability: "view",
     inputs: [{ name: "_keyOwner", type: "address" }],
-    outputs: [{ name: "balance", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
