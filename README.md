@@ -8,6 +8,7 @@
 # unlock-mcp
 
 [![npm](https://img.shields.io/npm/v/unlock-mcp)](https://www.npmjs.com/package/unlock-mcp)
+[![unlock-mcp MCP server](https://glama.ai/mcp/servers/wkalidev/unlock-mcp/badges/score.svg)](https://glama.ai/mcp/servers/wkalidev/unlock-mcp)
 
 Read-only MCP server exposing [Unlock Protocol](https://unlock-protocol.com/) on-chain
 state. No private keys, no signing, no write calls — every tool only reads from the
