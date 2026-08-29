@@ -20,7 +20,10 @@ server.registerTool(
   {
     title: "Check Unlock Protocol membership",
     description:
-      "Check whether a wallet holds a valid (non-expired) key for an Unlock Protocol lock, read-only.",
+      "Check whether a wallet holds a valid (non-expired) key for a specific Unlock Protocol lock, read-only. " +
+      "Returns status (valid, expired, no_key, not_a_contract, or not_a_lock), lock name, tokenId, and expiration. " +
+      "Use this when you already know the lock address to check; use unlock_list_keys instead when you need " +
+      "every lock a wallet holds and don't know the addresses up front.",
     inputSchema: checkMembershipInputShape,
   },
   async (input) => {
@@ -68,7 +71,11 @@ server.registerTool(
   {
     title: "List Unlock Protocol keys held by a wallet",
     description:
-      "List every Unlock Protocol key a wallet holds across locks on a network, via the Unlock subgraph, read-only.",
+      "List every Unlock Protocol key a wallet holds across locks on a network, via the Unlock subgraph, read-only. " +
+      "Returns each key's lock address and name, tokenId, expiration, and validity, sorted by expiration descending " +
+      "and capped at 100 results with a truncation flag. Use this when you need every membership a wallet holds " +
+      "and don't know the lock addresses up front; use unlock_check_membership instead when you already know " +
+      "which lock to check.",
     inputSchema: listKeysInputShape,
   },
   async (input) => {
