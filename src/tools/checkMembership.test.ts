@@ -13,6 +13,7 @@ const NETWORK: NetworkConfig = {
   name: "Base",
   rpcUrls: ["https://example.invalid/rpc"],
   unlockAddress: "0x0000000000000000000000000000000000dEaD",
+  subgraph: "https://example.invalid/subgraph",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
 };
 

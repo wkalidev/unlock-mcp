@@ -1,20 +1,8 @@
-import {
-  BaseError,
-  ContractFunctionRevertedError,
-  createPublicClient,
-  fallback,
-  http,
-  isAddress,
-  type PublicClient,
-} from "viem";
+import { createPublicClient, fallback, http, type PublicClient } from "viem";
 import { z } from "zod";
 import { publicLockAbi } from "../abi/publicLock.js";
 import { getNetwork, toViemChain, type NetworkConfig } from "../networks.js";
-
-const addressSchema = z
-  .string()
-  .refine((value) => isAddress(value), { message: "not a valid 0x address" })
-  .transform((value) => value as `0x${string}`);
+import { UnlockToolError, addressSchema, classifyError, classifyLock, rpcFailureMessage, UNLIMITED } from "./shared.js";
 
 export const checkMembershipInputShape = {
   lockAddress: addressSchema.describe("Address of the PublicLock contract to check"),
@@ -29,26 +17,9 @@ const checkMembershipInputSchema = z.object(checkMembershipInputShape);
 
 export type CheckMembershipInput = z.input<typeof checkMembershipInputSchema>;
 
-// Keys created without an expiration (lifetime keys) are stamped with the max uint256
-// value by the PublicLock contract. That value overflows JS Date, so it must be
-// special-cased rather than converted.
-const NEVER_EXPIRES = 2n ** 256n - 1n;
-
 // Below this, PublicLock's keyExpirationTimestampFor(address) signature was used;
 // from this version on, it's keyExpirationTimestampFor(tokenId).
 const TOKEN_ID_SIGNATURE_MIN_VERSION = 10;
-
-type ErrorClass = "revert" | "transport" | "unknown";
-
-// Discriminate structurally, not by message text: a genuine contract revert always
-// surfaces a ContractFunctionRevertedError in viem's cause chain — that's the only
-// reliable signal that the address isn't a working PublicLock. Everything else thrown
-// by viem (timeout, connection failure, rate limiting, 5xx, ...) is a transport-side
-// failure, regardless of which RPC in the fallback chain ultimately gave up.
-function classifyError(err: unknown): ErrorClass {
-  if (!(err instanceof BaseError)) return "unknown";
-  return err.walk((e) => e instanceof ContractFunctionRevertedError) !== null ? "revert" : "transport";
-}
 
 function formatRelativeTime(target: Date, now: Date): string {
   const diffSec = Math.round((target.getTime() - now.getTime()) / 1000);
@@ -69,7 +40,11 @@ function formatRelativeTime(target: Date, now: Date): string {
   return rtf.format(diffSec, "second");
 }
 
-export class MembershipCheckError extends Error {}
+// Kept as its own exported name (rather than importing callers switching to
+// UnlockToolError directly) since index.ts's catch branch reads more clearly naming
+// the tool it came from.
+const MembershipCheckError = UnlockToolError;
+export { MembershipCheckError };
 
 interface MembershipResult {
   status: "valid" | "expired" | "no_key" | "not_a_contract" | "not_a_lock";
@@ -139,50 +114,19 @@ export async function checkMembership(rawInput: CheckMembershipInput): Promise<M
     transport: fallback(network.rpcUrls.map((url) => http(url, { timeout: 10_000 }))),
   });
 
-  const rpcFailureMessage = () =>
-    `RPC request to ${network.name} failed on every configured endpoint (${network.rpcUrls.join(", ")}) — the network may be unreachable, timing out, or rate-limiting. Try again shortly.`;
-
-  let bytecode: `0x${string}` | undefined;
-  try {
-    bytecode = await client.getCode({ address: input.lockAddress });
-  } catch (err) {
-    if (classifyError(err) === "unknown") {
-      throw new MembershipCheckError(`Unexpected error reading from ${network.name}: ${(err as Error).message}`);
-    }
-    throw new MembershipCheckError(rpcFailureMessage());
+  const classification = await classifyLock(client, input.lockAddress, network);
+  if (classification.status !== "ok") {
+    return { status: classification.status, network: network.name, lockAddress: input.lockAddress };
   }
 
-  if (!bytecode || bytecode === "0x") {
-    return { status: "not_a_contract", network: network.name, lockAddress: input.lockAddress };
-  }
-
-  let version: number;
-  let lockName: string;
-  try {
-    [version, lockName] = await Promise.all([
-      client.readContract({
-        address: input.lockAddress,
-        abi: publicLockAbi,
-        functionName: "publicLockVersion",
-      }),
-      client.readContract({
-        address: input.lockAddress,
-        abi: publicLockAbi,
-        functionName: "name",
-      }),
-    ]);
-  } catch (err) {
-    const kind = classifyError(err);
-    if (kind === "revert") {
-      return { status: "not_a_lock", network: network.name, lockAddress: input.lockAddress };
-    }
-    if (kind === "transport") {
-      throw new MembershipCheckError(rpcFailureMessage());
-    }
-    throw new MembershipCheckError(`Unexpected error reading lock data: ${(err as Error).message}`);
-  }
-
-  return resolveMembershipStatus(client, input.lockAddress, input.walletAddress, version, lockName, network);
+  return resolveMembershipStatus(
+    client,
+    input.lockAddress,
+    input.walletAddress,
+    classification.version,
+    classification.name,
+    network
+  );
 }
 
 // Split out from checkMembership so it can be exercised against a mocked client:
@@ -196,9 +140,6 @@ export async function resolveMembershipStatus(
   lockName: string,
   network: NetworkConfig
 ): Promise<MembershipResult> {
-  const rpcFailureMessage = () =>
-    `RPC request to ${network.name} failed on every configured endpoint (${network.rpcUrls.join(", ")}) — the network may be unreachable, timing out, or rate-limiting. Try again shortly.`;
-
   // totalKeys, not balanceOf: on v10+ locks balanceOf counts only currently-valid keys,
   // so a wallet holding an expired key reads identically to one that never held a key.
   // Reach for totalKeys here even though balanceOf is the reflexive ERC-721 choice —
@@ -214,7 +155,7 @@ export async function resolveMembershipStatus(
     });
   } catch (err) {
     if (classifyError(err) === "transport") {
-      throw new MembershipCheckError(rpcFailureMessage());
+      throw new MembershipCheckError(rpcFailureMessage(network));
     }
     throw new MembershipCheckError(`Unexpected error reading key count: ${(err as Error).message}`);
   }
@@ -228,14 +169,14 @@ export async function resolveMembershipStatus(
     best = await resolveBestKey(client, lockAddress, walletAddress, keyCount, version);
   } catch (err) {
     if (classifyError(err) === "transport") {
-      throw new MembershipCheckError(rpcFailureMessage());
+      throw new MembershipCheckError(rpcFailureMessage(network));
     }
     throw new MembershipCheckError(`Unexpected error reading key expiration: ${(err as Error).message}`);
   }
 
   const now = new Date();
 
-  if (best.expiration === NEVER_EXPIRES) {
+  if (best.expiration === UNLIMITED) {
     return {
       status: "valid",
       lockName,

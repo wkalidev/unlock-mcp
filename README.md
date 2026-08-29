@@ -83,6 +83,54 @@ reflects current on-chain state, not a block explorer's indexed snapshot (a lock
 name is only set once at deploy time in most explorer UIs, but can change on-chain
 afterward; this tool always reads the current value).
 
+### `unlock_get_lock`
+
+Reads a lock's public shape directly from the chain via RPC (not the subgraph — this
+is point-in-time state, and the RPC path already exists).
+
+| Input | Type | Required | Description |
+| --- | --- | --- | --- |
+| `lockAddress` | `0x` address | yes | The PublicLock contract to read |
+| `network` | string | no | Defaults to `"base"` |
+
+Returns name, symbol, address, network, PublicLock version, key price (amount, raw
+value, and currency — the token's own symbol/decimals for an ERC-20, or the chain's
+native currency if the lock's `tokenAddress()` is the zero address), expiration
+duration in both seconds and human-readable form, max number of keys, and total keys
+sold (`totalSupply()`, a running counter of every key ever created — not the current
+valid supply).
+
+`expirationDuration` and `maxNumberOfKeys` each use a max-uint256 sentinel for
+"unlimited" (never-expiring keys, or no cap on keys respectively) — the tool reports
+those explicitly as `unlimited: true` rather than surfacing the raw sentinel as a
+number.
+
+Lock managers are deliberately **not** included: PublicLock exposes no enumerable
+getter for that role (it uses a plain OpenZeppelin AccessControl role, not
+AccessControlEnumerable) — only `isLockManager(address)`, a point check against an
+address you'd already have to know. Getting the actual list would mean either
+replaying `RoleGranted`/`RoleRevoked` logs from deployment (not a cheap RPC read) or
+asking the subgraph, which this tool intentionally avoids so it stays pure on-chain
+state. Same three classification results as `unlock_check_membership` apply here for
+a bad address: not a contract, not a PublicLock, or a working lock.
+
+### `unlock_list_keys`
+
+Lists every key a wallet holds across locks on a network, via Unlock's subgraph —
+enumerating a wallet's keys across all locks isn't something RPC can do without
+already knowing which locks to look at.
+
+| Input | Type | Required | Description |
+| --- | --- | --- | --- |
+| `walletAddress` | `0x` address | yes | The wallet to list keys for |
+| `network` | string | no | Defaults to `"base"` |
+| `includeExpired` | boolean | no | Include expired/cancelled keys too (default `false`, i.e. currently-valid keys only) |
+
+Returns, per key: lock address, lock name, tokenId, expiration (ISO timestamp, or
+`"never"` for a lifetime key), and whether it's currently valid. Results are sorted by
+expiration descending and capped at 100, with a note in the response if the cap was
+hit. A wallet holding no keys is a normal empty result, not an error.
+
 ## Networks
 
 Chains are configured as data in `src/networks.ts` — adding one is a new object, not a
@@ -109,6 +157,16 @@ UNLOCK_MCP_RPC_URL_BASE=https://your-rpc.example.com
 ```
 
 The override is tried first; the built-in defaults remain as fallbacks behind it.
+
+### Subgraph endpoint
+
+`unlock_list_keys` reads from Unlock's public subgraph, one endpoint per network
+(no fallback chain, since there's only one). To override it for a given network, set
+`UNLOCK_MCP_SUBGRAPH_URL_<NETWORK>` (uppercased network name), e.g.:
+
+```sh
+UNLOCK_MCP_SUBGRAPH_URL_BASE=https://your-subgraph.example.com
+```
 
 ## Development
 

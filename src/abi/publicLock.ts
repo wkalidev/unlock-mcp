@@ -1,4 +1,4 @@
-// Minimal PublicLock ABI — only the functions this milestone calls.
+// Minimal PublicLock ABI — only the functions the read tools call.
 // Cross-checked against @unlock-protocol/contracts (V9 through V15): these functions
 // and their signatures are stable across that range, with one exception handled
 // explicitly in src/tools/checkMembership.ts — keyExpirationTimestampFor took a
@@ -10,6 +10,12 @@
 // indistinguishable from no key at all. totalKeys counts every key ever minted to
 // the owner, and tokenOfOwnerByIndex is bounded by totalKeys rather than balanceOf,
 // so it still enumerates expired keys.
+//
+// symbol/keyPrice/tokenAddress/expirationDuration/maxNumberOfKeys/totalSupply are
+// used by unlock_get_lock; also verified stable V9-V15 against the same source.
+// totalSupply() returns the contract's `_totalKeysCreated` counter (its output name
+// per the ABI), a running total that never decrements — i.e. total keys sold, not
+// current valid supply.
 export const publicLockAbi = [
   {
     type: "function",
@@ -55,5 +61,47 @@ export const publicLockAbi = [
     stateMutability: "view",
     inputs: [{ name: "_keyOwner", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "symbol",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    type: "function",
+    name: "keyPrice",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "tokenAddress",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "expirationDuration",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "maxNumberOfKeys",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalSupply",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "_totalKeysCreated", type: "uint256" }],
   },
 ] as const;
