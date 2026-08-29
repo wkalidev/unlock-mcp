@@ -5,7 +5,7 @@ import { getNetwork, toViemChain, type NetworkConfig } from "../networks.js";
 import { addressSchema, classifyError, classifyLock, rpcFailureMessage, UnlockToolError, UNLIMITED } from "./shared.js";
 
 export const getLockInputShape = {
-  lockAddress: addressSchema.describe("Address of the PublicLock contract to read"),
+  lockAddress: addressSchema("Address of the PublicLock contract to read"),
   network: z.string().default("base").describe('Network name (defaults to "base")'),
 };
 

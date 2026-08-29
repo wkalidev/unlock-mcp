@@ -10,10 +10,18 @@ import type { NetworkConfig } from "../networks.js";
 // the same sentinel.
 export const UNLIMITED = 2n ** 256n - 1n;
 
-export const addressSchema = z
-  .string()
-  .refine((value) => isAddress(value), { message: "not a valid 0x address" })
-  .transform((value) => value as `0x${string}`);
+// A factory, not a shared singleton: the MCP SDK's zod-to-json-schema conversion caches
+// schemas by object identity and collapses a second reference to the same instance into
+// a $ref (e.g. walletAddress -> {"$ref": "#/properties/lockAddress"}) — valid JSON
+// Schema, but many MCP clients don't dereference it and see an untyped parameter. Each
+// call here returns a distinct schema object so every field's type stays inline.
+export function addressSchema(description: string) {
+  return z
+    .string()
+    .refine((value) => isAddress(value), { message: "not a valid 0x address" })
+    .transform((value) => value as `0x${string}`)
+    .describe(description);
+}
 
 export class UnlockToolError extends Error {}
 

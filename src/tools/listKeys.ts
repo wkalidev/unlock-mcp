@@ -4,7 +4,7 @@ import { querySubgraph, SubgraphError } from "../subgraph.js";
 import { addressSchema, UNLIMITED } from "./shared.js";
 
 export const listKeysInputShape = {
-  walletAddress: addressSchema.describe("Wallet address to list Unlock Protocol keys for"),
+  walletAddress: addressSchema("Wallet address to list Unlock Protocol keys for"),
   network: z.string().default("base").describe('Network name (defaults to "base")'),
   includeExpired: z
     .boolean()

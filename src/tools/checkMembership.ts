@@ -5,8 +5,8 @@ import { getNetwork, toViemChain, type NetworkConfig } from "../networks.js";
 import { UnlockToolError, addressSchema, classifyError, classifyLock, rpcFailureMessage, UNLIMITED } from "./shared.js";
 
 export const checkMembershipInputShape = {
-  lockAddress: addressSchema.describe("Address of the PublicLock contract to check"),
-  walletAddress: addressSchema.describe("Wallet address to check for a valid key"),
+  lockAddress: addressSchema("Address of the PublicLock contract to check"),
+  walletAddress: addressSchema("Wallet address to check for a valid key"),
   network: z
     .string()
     .default("base")
