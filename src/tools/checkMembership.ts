@@ -54,6 +54,10 @@ interface MembershipResult {
   tokenId?: string;
   expiresAt?: string;
   expiresRelative?: string;
+  // Present only when getHasValidKey's verdict disagrees with comparing expiresAt to
+  // the local clock (e.g. clock skew, or a lock with non-standard validity rules).
+  // Absent — not false — when they agree, so existing consumers see no change.
+  verdictDisagreement?: { contractVerdict: "valid" | "expired"; localVerdict: "valid" | "expired" };
 }
 
 // Only needs readContract, so tests can pass a minimal mock rather than a full PublicClient.
@@ -181,27 +185,60 @@ export async function resolveMembershipStatus(
   }
 
   const now = new Date();
+  // best.expiration/now only ever explain the verdict (expiresAt, expiresRelative) —
+  // the verdict itself comes from getHasValidKey below. localVerdict is still computed
+  // so a disagreement between the two can be surfaced rather than silently dropped.
+  const localVerdict: "valid" | "expired" =
+    best.expiration === UNLIMITED || Number(best.expiration) * 1000 > now.getTime() ? "valid" : "expired";
+
+  let status: "valid" | "expired" = localVerdict;
+  let verdictDisagreement: MembershipResult["verdictDisagreement"];
+  try {
+    const hasValidKey = await client.readContract({
+      address: lockAddress,
+      abi: publicLockAbi,
+      functionName: "getHasValidKey",
+      args: [walletAddress],
+    });
+    const contractVerdict: "valid" | "expired" = hasValidKey ? "valid" : "expired";
+    status = contractVerdict;
+    if (contractVerdict !== localVerdict) {
+      verdictDisagreement = { contractVerdict, localVerdict };
+    }
+  } catch (err) {
+    const kind = classifyError(err);
+    if (kind === "transport") {
+      throw new MembershipCheckError(rpcFailureMessage(network));
+    }
+    if (kind === "unknown") {
+      throw new MembershipCheckError(`Unexpected error reading key validity: ${(err as Error).message}`);
+    }
+    // getHasValidKey doesn't exist on very old locks — fall back to the local
+    // comparison instead of failing the call.
+    status = localVerdict;
+  }
 
   if (best.expiration === UNLIMITED) {
     return {
-      status: "valid",
+      status,
       lockName,
       network: network.name,
       tokenId: best.tokenId.toString(),
       expiresRelative: "never",
+      ...(verdictDisagreement ? { verdictDisagreement } : {}),
     };
   }
 
   const expiresAt = new Date(Number(best.expiration) * 1000);
-  const isValid = expiresAt.getTime() > now.getTime();
 
   return {
-    status: isValid ? "valid" : "expired",
+    status,
     lockName,
     network: network.name,
     tokenId: best.tokenId.toString(),
     expiresAt: expiresAt.toISOString(),
     expiresRelative: formatRelativeTime(expiresAt, now),
+    ...(verdictDisagreement ? { verdictDisagreement } : {}),
   };
 }
 

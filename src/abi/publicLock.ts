@@ -63,6 +63,23 @@ export const publicLockAbi = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+    // The contract's own valid/expired verdict for a wallet — used instead of comparing
+    // keyExpirationTimestampFor to the local clock. Not present on very old locks;
+    // callers must handle the revert and fall back to the local comparison.
+    type: "function",
+    name: "getHasValidKey",
+    stateMutability: "view",
+    inputs: [{ name: "_keyOwner", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "isValidKey",
+    stateMutability: "view",
+    inputs: [{ name: "_tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
     type: "function",
     name: "symbol",
     stateMutability: "view",
