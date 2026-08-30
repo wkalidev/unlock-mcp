@@ -79,21 +79,27 @@ export async function resolveBestKey(
 
   const usesTokenIdSignature = version >= TOKEN_ID_SIGNATURE_MIN_VERSION;
 
+  if (!usesTokenIdSignature) {
+    // Pre-v10 PublicLock only exposes keyExpirationTimestampFor(address) — one
+    // expiration per wallet, not per key — so there's no per-tokenId value to
+    // select between; every key the wallet owns shares this same expiration.
+    const expiration = await client.readContract({
+      address: lockAddress,
+      abi: publicLockAbi,
+      functionName: "keyExpirationTimestampFor",
+      args: [walletAddress],
+    });
+    return { tokenId: tokenIds[0]!, expiration };
+  }
+
   const expirations = await Promise.all(
     tokenIds.map((tokenId) =>
-      usesTokenIdSignature
-        ? client.readContract({
-            address: lockAddress,
-            abi: publicLockAbi,
-            functionName: "keyExpirationTimestampFor",
-            args: [tokenId],
-          })
-        : client.readContract({
-            address: lockAddress,
-            abi: publicLockAbi,
-            functionName: "keyExpirationTimestampFor",
-            args: [walletAddress],
-          })
+      client.readContract({
+        address: lockAddress,
+        abi: publicLockAbi,
+        functionName: "keyExpirationTimestampFor",
+        args: [tokenId],
+      })
     )
   );
 

@@ -39,6 +39,20 @@ test("pre-v10 locks (version 9) call keyExpirationTimestampFor with the owner ad
   assert.deepEqual(expirationCall.args, [WALLET]);
 });
 
+test("pre-v10 locks (version 9) read keyExpirationTimestampFor exactly once, regardless of tokenId count", async () => {
+  const calls: { functionName: string; args: readonly unknown[] }[] = [];
+  const client = mockClient(calls);
+
+  await resolveBestKey(client, LOCK, WALLET, 3n, 9);
+
+  const expirationCalls = calls.filter((c) => c.functionName === "keyExpirationTimestampFor");
+  assert.equal(
+    expirationCalls.length,
+    1,
+    "pre-v10 locks expose one expiration per wallet, not per tokenId — reading more than once is redundant"
+  );
+});
+
 test("v10+ locks (version 14) call keyExpirationTimestampFor with the tokenId", async () => {
   const calls: { functionName: string; args: readonly unknown[] }[] = [];
   const client = mockClient(calls);
