@@ -1,4 +1,4 @@
-import { BaseError, ContractFunctionRevertedError, isAddress, type PublicClient } from "viem";
+import { BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, isAddress, type PublicClient } from "viem";
 import { z } from "zod";
 import { publicLockAbi } from "../abi/publicLock.js";
 import type { NetworkConfig } from "../networks.js";
@@ -25,16 +25,22 @@ export function addressSchema(description: string) {
 
 export class UnlockToolError extends Error {}
 
-type ErrorClass = "revert" | "transport" | "unknown";
+type ErrorClass = "revert" | "zero_data" | "transport" | "unknown";
 
 // Discriminate structurally, not by message text: a genuine contract revert always
 // surfaces a ContractFunctionRevertedError in viem's cause chain — that's the only
-// reliable signal that the address isn't a working PublicLock. Everything else thrown
-// by viem (timeout, connection failure, rate limiting, 5xx, ...) is a transport-side
-// failure, regardless of which RPC in the fallback chain ultimately gave up.
+// reliable signal that the address isn't a working PublicLock. A non-reverting
+// fallback (or any call to a function the contract doesn't implement) instead
+// surfaces a ContractFunctionZeroDataError — the call returned "0x", so the contract
+// answered, it just didn't return the data the ABI expected; that's not a transport
+// failure either. Everything else thrown by viem (timeout, connection failure, rate
+// limiting, 5xx, ...) is a transport-side failure, regardless of which RPC in the
+// fallback chain ultimately gave up.
 export function classifyError(err: unknown): ErrorClass {
   if (!(err instanceof BaseError)) return "unknown";
-  return err.walk((e) => e instanceof ContractFunctionRevertedError) !== null ? "revert" : "transport";
+  if (err.walk((e) => e instanceof ContractFunctionRevertedError) !== null) return "revert";
+  if (err.walk((e) => e instanceof ContractFunctionZeroDataError) !== null) return "zero_data";
+  return "transport";
 }
 
 export function rpcFailureMessage(network: NetworkConfig): string {
@@ -77,7 +83,10 @@ export async function classifyLock(
     return { status: "ok", version, name };
   } catch (err) {
     const kind = classifyError(err);
-    if (kind === "revert") {
+    // A non-reverting fallback answers with zero data rather than a revert, but it's
+    // just as clear a signal that this isn't a PublicLock: an address with code that
+    // doesn't implement the function isn't a lock either way.
+    if (kind === "revert" || kind === "zero_data") {
       return { status: "not_a_lock" };
     }
     if (kind === "transport") {

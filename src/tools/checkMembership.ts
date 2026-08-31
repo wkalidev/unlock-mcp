@@ -213,8 +213,9 @@ export async function resolveMembershipStatus(
     if (kind === "unknown") {
       throw new MembershipCheckError(`Unexpected error reading key validity: ${(err as Error).message}`);
     }
-    // getHasValidKey doesn't exist on very old locks — fall back to the local
-    // comparison instead of failing the call.
+    // getHasValidKey doesn't exist on very old locks — surfaced as a revert on some
+    // RPCs, as zero data on others — so fall back to the local comparison instead of
+    // failing the call in either case.
     status = localVerdict;
   }
 

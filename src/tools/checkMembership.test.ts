@@ -1,9 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ContractFunctionRevertedError, type PublicClient } from "viem";
+import {
+  AbiDecodingZeroDataError,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
+  type PublicClient,
+} from "viem";
 import { publicLockAbi } from "../abi/publicLock.js";
 import type { NetworkConfig } from "../networks.js";
 import { resolveBestKey, resolveMembershipStatus } from "./checkMembership.js";
+
+// What viem actually throws when a call returns "0x" and there's nothing to decode —
+// e.g. a non-reverting fallback, or an address that just doesn't implement the
+// function. Distinct from a revert: ContractFunctionRevertedError never appears in
+// this chain, only ContractFunctionZeroDataError / AbiDecodingZeroDataError.
+function zeroDataError(functionName: string, args: readonly unknown[] = []): ContractFunctionExecutionError {
+  const zeroData = new ContractFunctionZeroDataError({
+    functionName,
+    cause: new AbiDecodingZeroDataError(),
+  });
+  return new ContractFunctionExecutionError(zeroData, { abi: publicLockAbi, functionName, args });
+}
 
 const LOCK = "0x1111111111111111111111111111111111111a" as const;
 const WALLET = "0x2222222222222222222222222222222222222b" as const;
@@ -194,5 +212,29 @@ test("getHasValidKey reverting (very old locks that don't implement it) falls ba
   assert.ok(
     !("verdictDisagreement" in result),
     "there is no contract verdict to disagree with once getHasValidKey reverts"
+  );
+});
+
+// mockStatusClient's existing revert case throws a hand-built
+// ContractFunctionRevertedError directly — the one class that already took this
+// fallback branch even before zero_data existed. This covers what a non-reverting
+// fallback actually produces: a ContractFunctionExecutionError wrapping
+// ContractFunctionZeroDataError wrapping AbiDecodingZeroDataError, with no
+// ContractFunctionRevertedError anywhere in the chain.
+test("getHasValidKey returning zero data (a non-reverting fallback) falls back to the local expiration comparison", async () => {
+  const futureExpiration = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const zeroData = zeroDataError("getHasValidKey", [WALLET]);
+  const { client, calls } = mockStatusClient(1n, futureExpiration, zeroData);
+
+  const result = await resolveMembershipStatus(client, LOCK, WALLET, VERSION, "Test Lock", NETWORK);
+
+  assert.ok(
+    calls.some((c) => c.functionName === "getHasValidKey"),
+    "getHasValidKey should still be attempted so the fallback only triggers on an actual zero-data return"
+  );
+  assert.equal(result.status, "valid");
+  assert.ok(
+    !("verdictDisagreement" in result),
+    "there is no contract verdict to disagree with once getHasValidKey returns zero data"
   );
 });

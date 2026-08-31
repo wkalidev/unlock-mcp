@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PublicClient } from "viem";
-import { zeroAddress } from "viem";
+import { AbiDecodingZeroDataError, ContractFunctionExecutionError, ContractFunctionZeroDataError, zeroAddress } from "viem";
 import type { NetworkConfig } from "../networks.js";
+import { publicLockAbi } from "../abi/publicLock.js";
 import { classifyLock, UNLIMITED } from "./shared.js";
 import { formatGetLockResult, resolveLockDetails } from "./getLock.js";
+
+// What viem actually throws when a call returns "0x" and there's nothing to decode —
+// e.g. a non-reverting fallback, or an address that just doesn't implement the
+// function. Distinct from a revert: ContractFunctionRevertedError never appears in
+// this chain, only ContractFunctionZeroDataError / AbiDecodingZeroDataError.
+function zeroDataError(functionName: string, args: readonly unknown[] = []): ContractFunctionExecutionError {
+  const zeroData = new ContractFunctionZeroDataError({
+    functionName,
+    cause: new AbiDecodingZeroDataError(),
+  });
+  return new ContractFunctionExecutionError(zeroData, { abi: publicLockAbi, functionName, args });
+}
 
 const LOCK = "0x1111111111111111111111111111111111111a" as const;
 const ERC20_TOKEN = "0x3333333333333333333333333333333333333c" as const;
@@ -41,6 +54,22 @@ test("classifyLock reports not_a_contract when there is no bytecode", async () =
 
   const result = await classifyLock(client, LOCK, NETWORK);
   assert.deepEqual(result, { status: "not_a_contract" });
+});
+
+// A non-reverting fallback (e.g. WETH9) or any contract that simply doesn't implement
+// publicLockVersion() returns "0x" rather than reverting — that's a
+// ContractFunctionZeroDataError, not a ContractFunctionRevertedError, and it must be
+// classified the same way a revert is: this has code, but it isn't a lock.
+test("classifyLock reports not_a_lock when publicLockVersion returns zero data (non-reverting fallback)", async () => {
+  const client: Pick<PublicClient, "getCode" | "readContract"> = {
+    getCode: (async () => "0x1234") as PublicClient["getCode"],
+    readContract: (async ({ functionName }: { functionName: string }) => {
+      throw zeroDataError(functionName);
+    }) as PublicClient["readContract"],
+  };
+
+  const result = await classifyLock(client, LOCK, NETWORK);
+  assert.deepEqual(result, { status: "not_a_lock" });
 });
 
 test("resolveLockDetails reports a free, native-currency, unlimited-duration lock", async () => {
