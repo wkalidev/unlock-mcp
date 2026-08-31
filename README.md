@@ -68,6 +68,16 @@ Checks whether a wallet holds a valid (non-expired) key for an Unlock Protocol l
 Returns whether the wallet holds a valid key, and if so its expiration (ISO timestamp
 and a relative form like "in 2 years"), the tokenId, the lock name, and the network.
 
+The valid/expired verdict comes from the lock's own `getHasValidKey`, not from
+comparing `keyExpirationTimestampFor` to the host's system clock — that avoids two
+agents on different machines (or with a skewed clock) disagreeing about the same key,
+and matches what the lock itself enforces. `keyExpirationTimestampFor` is still read
+and returned as `expiresAt`/`expiresRelative` to explain the verdict, and locks that
+predate `getHasValidKey` fall back to the local clock comparison. When the contract and
+the local comparison disagree, the response includes a `verdictDisagreement` field —
+`{ contractVerdict, localVerdict }` — instead of silently picking one; it's absent, not
+`false`, when the two agree.
+
 `keyExpirationTimestampFor` changed signature across PublicLock versions — locks below
 `publicLockVersion` 10 take a key owner address, version 10 and up take a tokenId. The
 tool reads `publicLockVersion()` and calls whichever form the lock actually implements.
