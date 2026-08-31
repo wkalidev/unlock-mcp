@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-31
+
+### Fixed
+
+- `classifyError` only distinguished a revert from everything else, so a contract with
+  a non-reverting fallback — which answers `0x` rather than reverting — was classified
+  as a transport failure. `classifyLock` reported an RPC outage for an address that had
+  simply answered, and any address with code and a fallback produced this. Zero data is
+  now its own error class, mapped to `not_a_lock`. (#3)
+- The `getHasValidKey` fallback added in 0.3.0 was unreachable for locks whose absent
+  function returns zero data rather than reverting, for the same reason. (#4)
+
+Both issues reported by revettr_x402.
+
 ## [0.3.0] - 2026-08-31
 
 ### Fixed
