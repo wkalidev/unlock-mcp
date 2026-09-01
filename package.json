@@ -1,6 +1,6 @@
 {
   "name": "unlock-mcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Read-only MCP server exposing Unlock Protocol on-chain state",
   "keywords": [
     "mcp",
