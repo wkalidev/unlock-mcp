@@ -9,7 +9,7 @@ import {
 } from "viem";
 import { publicLockAbi } from "../abi/publicLock.js";
 import type { NetworkConfig } from "../networks.js";
-import { resolveBestKey, resolveMembershipStatus } from "./checkMembership.js";
+import { MembershipCheckError, resolveBestKey, resolveMembershipStatus } from "./checkMembership.js";
 
 // What viem actually throws when a call returns "0x" and there's nothing to decode —
 // e.g. a non-reverting fallback, or an address that just doesn't implement the
@@ -165,6 +165,16 @@ test("getHasValidKey is consulted, and agreeing with the local expiration compar
   assert.ok(!("verdictDisagreement" in result), "verdictDisagreement must be absent, not false, when verdicts agree");
 });
 
+test("verdictSource is absent, not present-and-undefined, when the contract answers getHasValidKey", async () => {
+  const futureExpiration = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const { client } = mockStatusClient(1n, futureExpiration, true);
+
+  const result = await resolveMembershipStatus(client, LOCK, WALLET, VERSION, "Test Lock", NETWORK);
+
+  assert.equal(result.status, "valid");
+  assert.ok(!("verdictSource" in result), "verdictSource must be absent when the contract produced the verdict");
+});
+
 test("getHasValidKey says valid despite a past expiration: the contract verdict wins and the disagreement is surfaced", async () => {
   const pastExpiration = BigInt(Math.floor(Date.now() / 1000) - 3600);
   const { client } = mockStatusClient(1n, pastExpiration, true);
@@ -213,6 +223,18 @@ test("getHasValidKey reverting (very old locks that don't implement it) falls ba
     !("verdictDisagreement" in result),
     "there is no contract verdict to disagree with once getHasValidKey reverts"
   );
+  assert.equal(result.verdictSource, "local_clock");
+});
+
+test("getHasValidKey reverting, with requireContractVerdict set, fails cleanly instead of falling back", async () => {
+  const futureExpiration = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const revert = new ContractFunctionRevertedError({ abi: publicLockAbi, functionName: "getHasValidKey" });
+  const { client } = mockStatusClient(1n, futureExpiration, revert);
+
+  await assert.rejects(
+    resolveMembershipStatus(client, LOCK, WALLET, VERSION, "Test Lock", NETWORK, true),
+    (err: unknown) => err instanceof MembershipCheckError && /getHasValidKey/.test(err.message)
+  );
 });
 
 // mockStatusClient's existing revert case throws a hand-built
@@ -237,4 +259,26 @@ test("getHasValidKey returning zero data (a non-reverting fallback) falls back t
     !("verdictDisagreement" in result),
     "there is no contract verdict to disagree with once getHasValidKey returns zero data"
   );
+  assert.equal(result.verdictSource, "local_clock");
+});
+
+test("getHasValidKey returning zero data, with requireContractVerdict set, fails cleanly instead of falling back", async () => {
+  const futureExpiration = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const zeroData = zeroDataError("getHasValidKey", [WALLET]);
+  const { client } = mockStatusClient(1n, futureExpiration, zeroData);
+
+  await assert.rejects(
+    resolveMembershipStatus(client, LOCK, WALLET, VERSION, "Test Lock", NETWORK, true),
+    (err: unknown) => err instanceof MembershipCheckError && /getHasValidKey/.test(err.message)
+  );
+});
+
+test("requireContractVerdict set, but getHasValidKey answers directly: the contract path is untouched", async () => {
+  const futureExpiration = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const { client } = mockStatusClient(1n, futureExpiration, true);
+
+  const result = await resolveMembershipStatus(client, LOCK, WALLET, VERSION, "Test Lock", NETWORK, true);
+
+  assert.equal(result.status, "valid");
+  assert.ok(!("verdictSource" in result), "verdictSource must still be absent when the contract answers");
 });

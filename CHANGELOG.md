@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-01
+
+### Added
+
+- `unlock_check_membership` results now include `verdictSource: "local_clock"` when the
+  verdict fell back to comparing `keyExpirationTimestampFor` to the local clock (a lock
+  that predates `getHasValidKey`, reached via either a revert or a zero-data return).
+  Absent, not `false`, when the contract's own `getHasValidKey` produced the verdict, so
+  existing consumers see no change. (#5)
+- A new `requireContractVerdict` input, default off, fails `unlock_check_membership`
+  with a clear error instead of accepting that local-clock fallback, for callers that
+  would rather get no answer than one the lock itself didn't attest to. The fallback
+  remains a supported answer by default. (#5)
+
 ## [0.3.1] - 2026-08-31
 
 ### Fixed

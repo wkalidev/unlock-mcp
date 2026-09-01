@@ -64,6 +64,7 @@ Checks whether a wallet holds a valid (non-expired) key for an Unlock Protocol l
 | `lockAddress` | `0x` address | yes | The PublicLock contract to check |
 | `walletAddress` | `0x` address | yes | The wallet to check for a key |
 | `network` | string | no | Defaults to `"base"` |
+| `requireContractVerdict` | boolean | no | Defaults to `false`. Fail instead of falling back to the local clock comparison (see below) |
 
 Returns whether the wallet holds a valid key, and if so its expiration (ISO timestamp
 and a relative form like "in 2 years"), the tokenId, the lock name, and the network.
@@ -77,6 +78,15 @@ predate `getHasValidKey` fall back to the local clock comparison. When the contr
 the local comparison disagree, the response includes a `verdictDisagreement` field —
 `{ contractVerdict, localVerdict }` — instead of silently picking one; it's absent, not
 `false`, when the two agree.
+
+When the verdict falls back to the local clock comparison (`getHasValidKey` reverts or
+returns zero data — typically a lock that predates it), the response includes
+`verdictSource: "local_clock"`; it's absent, not `false` or present-and-undefined, when
+the contract itself produced the verdict. That fallback is a supported answer by
+default. Set `requireContractVerdict: true` to instead fail the call with a clear error
+whenever the verdict would have come from the local clock rather than the contract —
+useful for callers that would rather get no answer than one the lock itself didn't
+attest to. It has no effect when the contract answers normally.
 
 `keyExpirationTimestampFor` changed signature across PublicLock versions — locks below
 `publicLockVersion` 10 take a key owner address, version 10 and up take a tokenId. The

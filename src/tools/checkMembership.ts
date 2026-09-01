@@ -11,6 +11,15 @@ export const checkMembershipInputShape = {
     .string()
     .default("base")
     .describe('Network name (defaults to "base")'),
+  requireContractVerdict: z
+    .boolean()
+    .default(false)
+    .describe(
+      "When true, fail with an error instead of falling back to comparing keyExpirationTimestampFor to the " +
+        "local clock when the lock's own getHasValidKey can't be read (e.g. it predates getHasValidKey). That " +
+        "fallback is a supported valid/expired answer by default (false) — set this to require a verdict " +
+        "sourced from the contract itself."
+    ),
 };
 
 const checkMembershipInputSchema = z.object(checkMembershipInputShape);
@@ -58,6 +67,13 @@ interface MembershipResult {
   // the local clock (e.g. clock skew, or a lock with non-standard validity rules).
   // Absent — not false — when they agree, so existing consumers see no change.
   verdictDisagreement?: { contractVerdict: "valid" | "expired"; localVerdict: "valid" | "expired" };
+  // Present only when getHasValidKey didn't answer (revert or zero data — e.g. a lock
+  // that predates it) and the verdict fell back to comparing expiresAt to the local
+  // clock. Absent — not undefined-but-present, not false — when the contract produced
+  // the verdict, so existing consumers see no change. Same shape convention as
+  // verdictDisagreement. Only ever "local_clock": a contract-sourced verdict is the
+  // absence of this field, not a "contract" value.
+  verdictSource?: "local_clock";
 }
 
 // Only needs readContract, so tests can pass a minimal mock rather than a full PublicClient.
@@ -135,7 +151,8 @@ export async function checkMembership(rawInput: CheckMembershipInput): Promise<M
     input.walletAddress,
     classification.version,
     classification.name,
-    network
+    network,
+    input.requireContractVerdict
   );
 }
 
@@ -148,7 +165,8 @@ export async function resolveMembershipStatus(
   walletAddress: `0x${string}`,
   version: number,
   lockName: string,
-  network: NetworkConfig
+  network: NetworkConfig,
+  requireContractVerdict = false
 ): Promise<MembershipResult> {
   // totalKeys, not balanceOf: on v10+ locks balanceOf counts only currently-valid keys,
   // so a wallet holding an expired key reads identically to one that never held a key.
@@ -193,6 +211,7 @@ export async function resolveMembershipStatus(
 
   let status: "valid" | "expired" = localVerdict;
   let verdictDisagreement: MembershipResult["verdictDisagreement"];
+  let verdictSource: MembershipResult["verdictSource"];
   try {
     const hasValidKey = await client.readContract({
       address: lockAddress,
@@ -215,8 +234,17 @@ export async function resolveMembershipStatus(
     }
     // getHasValidKey doesn't exist on very old locks — surfaced as a revert on some
     // RPCs, as zero data on others — so fall back to the local comparison instead of
-    // failing the call in either case.
+    // failing the call in either case, unless the caller opted into requiring a
+    // contract-sourced verdict via requireContractVerdict.
+    if (requireContractVerdict) {
+      throw new MembershipCheckError(
+        `Cannot produce a contract-sourced verdict on ${network.name}: this lock's getHasValidKey could not be ` +
+          "read (it likely predates that method), and requireContractVerdict is set so the local-clock fallback " +
+          "was refused. Retry without requireContractVerdict to accept that fallback."
+      );
+    }
     status = localVerdict;
+    verdictSource = "local_clock";
   }
 
   if (best.expiration === UNLIMITED) {
@@ -227,6 +255,7 @@ export async function resolveMembershipStatus(
       tokenId: best.tokenId.toString(),
       expiresRelative: "never",
       ...(verdictDisagreement ? { verdictDisagreement } : {}),
+      ...(verdictSource ? { verdictSource } : {}),
     };
   }
 
@@ -240,6 +269,7 @@ export async function resolveMembershipStatus(
     expiresAt: expiresAt.toISOString(),
     expiresRelative: formatRelativeTime(expiresAt, now),
     ...(verdictDisagreement ? { verdictDisagreement } : {}),
+    ...(verdictSource ? { verdictSource } : {}),
   };
 }
 

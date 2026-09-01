@@ -23,7 +23,10 @@ server.registerTool(
       "Check whether a wallet holds a valid (non-expired) key for a specific Unlock Protocol lock, read-only. " +
       "Returns status (valid, expired, no_key, not_a_contract, or not_a_lock), lock name, tokenId, and expiration. " +
       "Use this when you already know the lock address to check; use unlock_list_keys instead when you need " +
-      "every lock a wallet holds and don't know the addresses up front.",
+      "every lock a wallet holds and don't know the addresses up front. " +
+      "The verdict normally comes from the lock's own getHasValidKey; on locks that predate it, the call falls " +
+      "back to comparing the read expiration to the local clock and reports verdictSource: \"local_clock\" (absent " +
+      "when the contract answered). Set requireContractVerdict to fail instead of accepting that fallback.",
     inputSchema: checkMembershipInputShape,
   },
   async (input) => {
